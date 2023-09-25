@@ -32,28 +32,35 @@ def modify_sentence(sentence):
 if not os.path.exists('processed_data'):
     os.makedirs('processed_data')
 
-# Loop through each file in the data folder
+# Read sentences from data folder
+sentences = {}
 for filename in os.listdir('data'):
     with open(f'data/{filename}', 'r') as f:
-        sent1 = f.read().strip()
+        sentences[filename] = f.read().strip()
 
-    # Initialize variables
-    max_score_diff = 0
-    best_sent1 = sent1
+# Initialize variables
+best_sentences = sentences.copy()
 
-    # Modify sentence to maximize BERT score difference
-    for _ in range(1000):  # Number of iterations
-        # Modify sentence
-        new_sent1 = modify_sentence(sent1)
-        
-        # Calculate new BERT score
-        new_score = calculate_bert_score(new_sent1, sent1)
-        
-        # Update if the new score is better
-        if abs(new_score) > max_score_diff:
-            max_score_diff = abs(new_score)
-            best_sent1 = new_sent1
+# Modify sentences to minimize BERT score
+for _ in range(1000):  # Number of iterations
+    # Generate a new set of modified sentences
+    new_sentences = {filename: modify_sentence(sent) for filename, sent in sentences.items()}
+    
+    # Calculate the total BERT score for the new set
+    total_score = 0
+    for filename1, sent1 in new_sentences.items():
+        for filename2, sent2 in new_sentences.items():
+            if filename1 != filename2:
+                bert_score = calculate_bert_score(sent1, sent2)
+                print(f"BERT Score between {filename1} and {filename2}: {bert_score}")
+                total_score += bert_score
+    
+    # Update if the new total score is lower
+    if total_score < sum(calculate_bert_score(best_sentences[filename1], best_sentences[filename2])
+                         for filename1 in best_sentences for filename2 in best_sentences if filename1 != filename2):
+        best_sentences = new_sentences.copy()
 
-    # Save the modified sentence to processed_data folder
+# Save the modified sentences to processed_data folder
+for filename, sent in best_sentences.items():
     with open(f'processed_data/{filename}', 'w') as f:
-        f.write(best_sent1)
+        f.write(sent)
