@@ -71,10 +71,12 @@ for filename1, sent1 in sentences.items():
 # Initialize variables
 best_sentences = sentences.copy()
 
+print("Modified BERT Scores:")
+
 # Modify sentences to minimize BERT score
-for _ in range(10):  # Number of iterations
+for i in range(10):  # Number of iterations
     # Generate a new set of modified sentences
-    new_sentences = {filename: modify_sentence(sent) for filename, sent in sentences.items()}
+    new_sentences = {filename: modify_sentence(sent) for filename, sent in best_sentences.items()}
     
     # Calculate the total BERT score for the new set
     total_score = 0
@@ -90,8 +92,10 @@ for _ in range(10):  # Number of iterations
                          for filename1 in best_sentences for filename2 in best_sentences if filename1 != filename2):
         best_sentences = new_sentences.copy()
 
-# Save the modified sentences to processed_data folder
-for filename, sent in best_sentences.items():
-    with open(f'processed_data/{filename}', 'w') as f:
-        f.write(sent)
+    # Save the modified sentences to processed_data folder after each iteration
+    for filename, sent in best_sentences.items():
+        with open(f'processed_data/{filename}', 'w', encoding='utf-8') as f:
+            f.write(sent)
+    
+    print(f"Iteration {i+1} completed. Sentences saved.")
 
