@@ -7,5 +7,10 @@ Masking is used to regenerate the sentences repeatedly until a minimal BERT scor
 Include a folder named 'data' with a list of text files that contain the sentences you want to maximise the difference between. 
 The modified sentences will be placed in the 'processed_data' folder.  
 
-# Requirements
+# Installation
+1. Install the required packages: 
 pip install -r requirements.txt
+
+2. Download the spaCy model:
+python -m spacy download en_core_web_sm
+

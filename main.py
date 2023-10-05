@@ -6,6 +6,10 @@ from bert_score import score
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, logging as hf_logging
 import torch
 from transformers import RobertaForMaskedLM
+import spacy
+
+# Load the spaCy model
+nlp = spacy.load("en_core_web_sm")
 
 
 # Suppress warnings from transformers library
@@ -21,17 +25,23 @@ model = AutoModelForSequenceClassification.from_pretrained("roberta-large")
 
 # Function to calculate BERT score between two sentences
 def calculate_bert_score(sent1, sent2):
-    P, R, F1 = score([sent1], [sent2], lang="en", model_type="microsoft/deberta-xlarge-mnli", rescale_with_baseline=True)
+    P, R, F1 = score([sent1], [sent2], lang="en", model_type="roberta-large", rescale_with_baseline=True)
     return F1.item()
 
 # Function to modify a sentence using Masked Language Modeling
 def modify_sentence(sentence):
-    words = sentence.split()
-    if len(words) <= 2:
-        return sentence  # Don't modify if the sentence is too short
+    doc = nlp(sentence)
+
+    # Create a list of token indices that are adjectives, adverbs, or non-key nouns
+    modifiable_indices = [token.i for token in doc if token.pos_ in ("ADJ", "ADV", "NOUN") and token.dep_ not in ("nsubj", "dobj")]
+
+    # If there are no modifiable words, return the original sentence
+    if not modifiable_indices:
+        return sentence
     
-    # Randomly select a word to mask (avoid first and last word)
-    mask_idx = random.randint(1, len(words) - 2)
+    # Randomly select an index to mask from the list of modifiable indices
+    mask_idx = random.choice(modifiable_indices)
+    words = [token.text for token in doc]
     words[mask_idx] = tokenizer.mask_token
     
     # Prepare input for MLM
@@ -44,8 +54,9 @@ def modify_sentence(sentence):
     mask_token_logits = output[0, mask_idx]
     mask_token_id = torch.argmax(mask_token_logits).item()
     
-    # Replace the masked token with the predicted token
+    # Replace the masked token with the predicted token and remove the leading space artifact
     predicted_token = tokenizer.convert_ids_to_tokens([mask_token_id])[0]
+    predicted_token = predicted_token.replace("Ġ", "")
     words[mask_idx] = predicted_token
     
     return " ".join(words)
