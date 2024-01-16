@@ -1,16 +1,10 @@
 import os
-import random
-import string
 import logging
+import random
 from bert_score import score
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, logging as hf_logging
-import torch
-from transformers import RobertaForMaskedLM
-import spacy
-
-# Load the spaCy model
-nlp = spacy.load("en_core_web_sm")
-
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, logging as hf_logging, RobertaForMaskedLM
+import itertools
+import numpy as np
 
 # Suppress warnings from transformers library
 logging.basicConfig(level=logging.ERROR)
@@ -23,90 +17,43 @@ mlm_model = RobertaForMaskedLM.from_pretrained("roberta-large")
 tokenizer = AutoTokenizer.from_pretrained("roberta-large")
 model = AutoModelForSequenceClassification.from_pretrained("roberta-large")
 
-# Function to calculate BERT score between two sentences
 def calculate_bert_score(sent1, sent2):
     P, R, F1 = score([sent1], [sent2], lang="en", model_type="roberta-large", rescale_with_baseline=True)
-    return F1.item()
+    bert_score = F1.item()
+    print(f"BERT score between '{sent1}' and '{sent2}': {bert_score}")
+    return bert_score
 
-# Function to modify a sentence using Masked Language Modeling
-def modify_sentence(sentence):
-    doc = nlp(sentence)
+def read_sentences(file_path):
+    with open(file_path, 'r') as file:
+        sentences = file.readlines()
+    return [sentence.strip() for sentence in sentences]
 
-    # Create a list of token indices that are adjectives, adverbs, or non-key nouns
-    modifiable_indices = [token.i for token in doc if token.pos_ in ("ADJ", "ADV", "NOUN") and token.dep_ not in ("nsubj", "dobj")]
+def calculate_total_bert_score(sentences):
+    return np.mean([calculate_bert_score(sent1, sent2) for sent1, sent2 in itertools.combinations(sentences, 2)])
 
-    # If there are no modifiable words, return the original sentence
-    if not modifiable_indices:
-        return sentence
-    
-    # Randomly select an index to mask from the list of modifiable indices
-    mask_idx = random.choice(modifiable_indices)
-    words = [token.text for token in doc]
-    words[mask_idx] = tokenizer.mask_token
-    
-    # Prepare input for MLM
-    input_text = " ".join(words)
-    input_ids = tokenizer(input_text, return_tensors="pt")["input_ids"]
-    
-    # Get MLM prediction for the masked token
-    with torch.no_grad():
-        output = mlm_model(input_ids).logits
-    mask_token_logits = output[0, mask_idx]
-    mask_token_id = torch.argmax(mask_token_logits).item()
-    
-    # Replace the masked token with the predicted token and remove the leading space artifact
-    predicted_token = tokenizer.convert_ids_to_tokens([mask_token_id])[0]
-    predicted_token = predicted_token.replace("Ġ", "")
-    words[mask_idx] = predicted_token
-    
-    return " ".join(words)
+def select_sentences(input_sentences, output_file, total_sentences=50):
+    selected_sentences = random.sample(input_sentences, total_sentences)
+    while True:
+        for i in range(total_sentences):
+            current_score = calculate_total_bert_score(selected_sentences)
+            new_sentence = random.choice(input_sentences)
+            temp_sentences = selected_sentences.copy()
+            temp_sentences[i] = new_sentence
+            new_score = calculate_total_bert_score(temp_sentences)
 
-# Create processed_data folder if it doesn't exist
-if not os.path.exists('processed_data'):
-    os.makedirs('processed_data')
+            if new_score < current_score:
+                selected_sentences[i] = new_sentence
+                with open(output_file, 'w') as file:
+                    for sentence in selected_sentences:
+                        file.write(sentence + '\n')
+                print(f"Replaced sentence at position {i} with '{new_sentence}'. New total BERT score: {new_score}")
 
-# Read sentences from data folder
-sentences = {}
-for filename in os.listdir('data'):
-    with open(f'data/{filename}', 'r') as f:
-        sentences[filename] = f.read().strip()
+def main():
+    input_file = os.path.join('data', 'stimuli_wordcloud_sentences.txt')
+    output_file = os.path.join('processed_data', 'output.txt')
 
-# Calculate and print initial BERT scores
-print("Initial BERT Scores:")
-for filename1, sent1 in sentences.items():
-    for filename2, sent2 in sentences.items():
-        if filename1 != filename2:
-            bert_score = calculate_bert_score(sent1, sent2)
-            print(f"BERT Score between {filename1} and {filename2}: {bert_score}")
+    sentences = read_sentences(input_file)
+    select_sentences(sentences, output_file)
 
-# Initialize variables
-best_sentences = sentences.copy()
-
-print("Modified BERT Scores:")
-
-# Modify sentences to minimize BERT score
-for i in range(10):  # Number of iterations
-    # Generate a new set of modified sentences
-    new_sentences = {filename: modify_sentence(sent) for filename, sent in best_sentences.items()}
-    
-    # Calculate the total BERT score for the new set
-    total_score = 0
-    for filename1, sent1 in new_sentences.items():
-        for filename2, sent2 in new_sentences.items():
-            if filename1 != filename2:
-                bert_score = calculate_bert_score(sent1, sent2)
-                print(f"BERT Score between {filename1} and {filename2}: {bert_score}")
-                total_score += bert_score
-    
-    # Update if the new total score is lower
-    if total_score < sum(calculate_bert_score(best_sentences[filename1], best_sentences[filename2])
-                         for filename1 in best_sentences for filename2 in best_sentences if filename1 != filename2):
-        best_sentences = new_sentences.copy()
-
-    # Save the modified sentences to processed_data folder after each iteration
-    for filename, sent in best_sentences.items():
-        with open(f'processed_data/{filename}', 'w', encoding='utf-8') as f:
-            f.write(sent)
-    
-    print(f"Iteration {i+1} completed. Sentences saved.")
-
+if __name__ == "__main__":
+    main()

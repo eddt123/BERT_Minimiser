@@ -1,5 +1,2 @@
 data*/
-processed_data/
-__pycache__/
-wandb*/ 
-models/
+processed_data*/
