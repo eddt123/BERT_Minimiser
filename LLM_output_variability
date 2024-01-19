@@ -1,0 +1,83 @@
+import pandas as pd
+from rouge_score import rouge_scorer
+import jiwer
+import matplotlib.pyplot as plt
+import os
+
+def calculate_rouge(hypothesis, reference):
+    """Calculate ROUGE scores between two sentences."""
+    scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
+    scores = scorer.score(reference, hypothesis)
+    return scores
+
+def calculate_wer(hypothesis, reference):
+    """Calculate Word Error Rate between two sentences."""
+    return jiwer.wer(reference, hypothesis)
+
+def process_excel(file_path):
+    # Read the Excel file
+    xl = pd.ExcelFile(file_path)
+
+    # Read the first sheet (ground truth/reference)
+    df_reference = xl.parse(sheet_name=0)
+    references = df_reference.iloc[:, 2].tolist()
+
+    avg_rouge_scores = []
+    avg_wer_scores = []
+    sheet_names = []
+
+    # Iterate through all other sheets and compare
+    for sheet_name in xl.sheet_names[1:]:
+        df_compare = xl.parse(sheet_name=sheet_name)
+        hypotheses = df_compare.iloc[:, 2].tolist()
+
+        # Ensure equal length
+        min_len = min(len(references), len(hypotheses))
+        references = references[:min_len]
+        hypotheses = hypotheses[:min_len]
+
+        # Accumulate scores for each pair of sentences
+        total_rouge1 = total_rougeL = total_wer = 0
+        for ref, hyp in zip(references, hypotheses):
+            rouge_scores = calculate_rouge(hyp, ref)
+            total_rouge1 += rouge_scores['rouge1'][2]  # F1-score of ROUGE-1
+            total_rougeL += rouge_scores['rougeL'][2]  # F1-score of ROUGE-L
+            total_wer += calculate_wer(hyp, ref)
+
+        # Calculate averages
+        avg_rouge1 = total_rouge1 / min_len
+        avg_rougeL = total_rougeL / min_len
+        avg_wer = total_wer / min_len
+
+        avg_rouge_scores.append((avg_rouge1, avg_rougeL))
+        avg_wer_scores.append(avg_wer)
+        sheet_names.append(sheet_name)
+
+    # Plotting
+    fig, ax1 = plt.subplots()
+
+    # ROUGE scores
+    ax1.set_xlabel('Sheet Name')
+    ax1.set_ylabel('Average ROUGE Score', color='tab:red')
+    ax1.plot(sheet_names, [x[0] for x in avg_rouge_scores], label='ROUGE-1', color='tab:red')
+    ax1.plot(sheet_names, [x[1] for x in avg_rouge_scores], label='ROUGE-L', color='tab:orange')
+    ax1.tick_params(axis='y', labelcolor='tab:red')
+    ax1.legend(loc='upper left')
+
+    # WER scores
+    ax2 = ax1.twinx()
+    ax2.set_ylabel('Average WER', color='tab:blue')
+    ax2.plot(sheet_names, avg_wer_scores, label='WER', color='tab:blue')
+    ax2.tick_params(axis='y', labelcolor='tab:blue')
+    ax2.legend(loc='upper right')
+
+    plt.title('Average ROUGE and WER Scores per Sheet')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+
+
+
+input_file = os.path.join('data', 'wordcloud_sentences.xlsx')
+process_excel(input_file) 
