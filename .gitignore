@@ -1,2 +1,5 @@
 data*/
 processed_data*/
+# Ignore all Excel files
+*.xlsx
+*.xls
